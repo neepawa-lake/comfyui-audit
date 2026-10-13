@@ -32,7 +32,7 @@ MAPPING_RE = re.compile(r'["\']([A-Za-z0-9_]+)["\']\s*:\s*([A-Za-z0-9_]+)\s*[,}]
 def file_registered_classes(path, src):
     try:
         tree = ast.parse(src)
-    except SyntaxError:
+    except (SyntaxError, ValueError):   # ValueError: 空字节等, SyntaxError: 语法错
         return set()
     if "NODE_CLASS_MAPPINGS" not in src:
         return set()
@@ -59,10 +59,18 @@ def sink_of(call):
 
 
 def scan_file(path):
-    src = open(path, encoding="utf-8", errors="replace").read()
+    try:
+        src = open(path, encoding="utf-8", errors="replace").read()
+    except OSError:
+        print(f"[skip] 无法读取: {path}", file=sys.stderr)
+        return []
+    if "\x00" in src:                 # 二进制/改名文件: ast.parse 不接受空字节
+        print(f"[skip] 含空字节(疑似二进制): {path}", file=sys.stderr)
+        return []
     try:
         tree = ast.parse(src)
-    except SyntaxError:
+    except (SyntaxError, ValueError):
+        print(f"[skip] 解析失败: {path}", file=sys.stderr)
         return []
     registered = file_registered_classes(path, src)
     hits = []
